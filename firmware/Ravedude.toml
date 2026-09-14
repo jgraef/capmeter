@@ -1,0 +1,7 @@
+[general]
+board = "uno"
+#open-console = true
+serial-baudrate = 57600
+
+# For documentation about this file, check here:
+# https://github.com/Rahix/avr-hal/blob/main/ravedude/README.md#ravedudetoml-format

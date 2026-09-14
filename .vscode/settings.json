@@ -1,0 +1,22 @@
+{
+    "files.insertFinalNewline": true,
+    "editor.formatOnSave": true,
+    "files.trimTrailingWhitespace": true,
+    "editor.semanticTokenColorCustomizations": {
+        "rules": {
+            "*.unsafe:rust": "#eb5046"
+        }
+    },
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "always",
+    },
+    "files.exclude": {
+        "*/target/**": true,
+        "*/Cargo.lock": true,
+    },
+    //"rust-analyzer.check.command": "clippy",
+    "wgsl.validateOnType": true,
+    "wgsl.autocompleate": true,
+    "wgsl.validateOnSave": true,
+    "rust-analyzer.cargo.features": "all"
+}
