@@ -17,7 +17,12 @@ use tokio::{
     sync::mpsc,
     task::JoinHandle,
 };
-use tokio_serial::SerialStream;
+use tokio_serial::{
+    DataBits,
+    FlowControl,
+    Parity,
+    SerialStream,
+};
 
 use crate::mux::reactor::{
     Command,

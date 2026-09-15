@@ -45,7 +45,7 @@ impl Serial {
         }
     }
 
-    fn peek(&mut self) -> Option<u8> {
+    pub fn peek(&mut self) -> Option<u8> {
         if self.peeked.is_none() {
             match self.usart.read() {
                 Ok(byte) => {
@@ -57,6 +57,27 @@ impl Serial {
 
         self.peeked
     }
+
+    pub fn skip(&mut self, mut count: usize) {
+        if count == 0 {
+            return;
+        }
+
+        if self.peeked.take().is_some() {
+            count -= 1;
+        }
+
+        while count > 0 {
+            match self.usart.read() {
+                Ok(_) => {
+                    count -= 1;
+                }
+                Err(nb::Error::WouldBlock) => {
+                    // keep polling
+                }
+            }
+        }
+    }
 }
 
 impl Read for Serial {
@@ -65,31 +86,33 @@ impl Read for Serial {
             return Ok(0);
         }
 
-        let mut num_read = 0;
+        let mut position = 0;
+        let mut already_read_something = false;
 
         // take any byte we peeked first
         if let Some(peeked) = self.peeked.take() {
-            buf[0] = peeked;
-            num_read = 1;
+            buf[position] = peeked;
+            position += 1;
         }
 
         loop {
             match self.usart.read() {
                 Ok(byte) => {
-                    buf[num_read] = byte;
-                    num_read += 1;
+                    buf[position] = byte;
+                    position += 1;
+                    already_read_something = true;
                 }
                 Err(nb::Error::WouldBlock) => {
                     // if we already read something, return now. otherwise keep
                     // polling
-                    if num_read > 0 {
+                    if already_read_something {
                         break;
                     }
                 }
             }
         }
 
-        Ok(num_read)
+        Ok(position)
     }
 }
 

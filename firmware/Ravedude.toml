@@ -1,6 +1,6 @@
 [general]
 board = "uno"
-#open-console = true
+open-console = true
 serial-baudrate = 57600
 
 # For documentation about this file, check here:

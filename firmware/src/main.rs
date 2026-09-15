@@ -1,14 +1,15 @@
 #![no_std]
 #![no_main]
 
+pub mod debug_led;
+pub mod global;
 pub mod mux;
+mod panic;
 mod print;
+pub mod protocol;
 pub mod serial;
 
-use core::task::{
-    ready,
-    Poll,
-};
+use core::task::Poll;
 
 use arduino_hal::{
     pins,
@@ -23,17 +24,16 @@ use arduino_hal::{
     },
     Peripherals,
 };
-use embedded_io::Write;
-use panic_halt as _;
 use protocol::{
     ClientMessage,
+    DeviceHello,
     DeviceMessage,
     Version,
-    DEBUG_PORT,
     PROTOCOL_PORT,
 };
 
 use crate::{
+    debug_led::DebugLed,
     mux::Mux,
     serial::Serial,
 };
@@ -58,21 +58,16 @@ fn main() -> ! {
     mux::install(mux);
 
     // debug LED
-    let mut debug_led = pins.d13.into_output();
-    debug_led.set_high();
+    debug_led::install(DebugLed::new(pins.d13));
+
+    // send bootup hello message
+    protocol::send(&DeviceMessage::Hello(DeviceHello {
+        boot: true,
+        version: FIRMWARE_VERSION,
+    }));
 
     // send hello via debug print
     println!("Capacitor Meter v0.0.1");
-
-    // send hello message
-    mux::with(|mux| {
-        mux.send_message(
-            PROTOCOL_PORT,
-            &DeviceMessage::Hello {
-                version: FIRMWARE_VERSION,
-            },
-        );
-    });
 
     let mut adc = arduino_hal::Adc::new(peripherals.ADC, Default::default());
     let mut meter = Meter {
@@ -82,46 +77,31 @@ fn main() -> ! {
     };
 
     loop {
-        match poll_client_message() {
+        match protocol::receive() {
             Poll::Pending => {}
             Poll::Ready(None) => break,
             Poll::Ready(Some(message)) => {
                 println!("Received protocol message: {:?}", message);
+
+                match message {
+                    ClientMessage::Hello(_client_hello) => {
+                        // when a new client says hello, we say it back!
+                        protocol::send(&DeviceMessage::Hello(DeviceHello {
+                            boot: false,
+                            version: FIRMWARE_VERSION,
+                        }));
+                    }
+                    ClientMessage::Measure {} => todo!(),
+                }
             }
         }
-
-        //debug_led.toggle();
-        //arduino_hal::delay_ms(50);
     }
 
     // serial closed? let's just wait until reset here
-    loop {}
-}
-
-fn poll_client_message() -> Poll<Option<ClientMessage>> {
-    mux::with(|mux| {
-        match mux.poll_receive() {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(chunk)) => {
-                match chunk.port {
-                    PROTOCOL_PORT => {
-                        match chunk.deserialize::<ClientMessage>() {
-                            Ok(message) => Poll::Ready(Some(message)),
-                            Err(_error) => {
-                                eprintln!(mux, "Error during deserialization");
-                                Poll::Pending
-                            }
-                        }
-                    }
-                    _ => {
-                        // ignore unexpected port.
-                        let port = chunk.port;
-                        eprintln!(mux, "Message on unexpected port: {}", port);
-                        Poll::Pending
-                    }
-                }
-            }
+    debug_led::with(|debug_led| {
+        loop {
+            // blink so we know the program stopped
+            debug_led.blink(200, 200);
         }
     })
 }

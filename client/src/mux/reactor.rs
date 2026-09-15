@@ -68,7 +68,11 @@ impl Reactor {
             Command::SendChunk { chunk } => {
                 if let Err(error) = self.stream.send(chunk).await {
                     // todo: propagate error in some way
-                    tracing::error!(?error, "error when sending chunk");
+                    tracing::error!(?error, "error while sending chunk");
+                }
+                if let Err(error) = self.stream.flush().await {
+                    // todo: propagate error in some way
+                    tracing::error!(?error, "error while flushing serial");
                 }
             }
         }

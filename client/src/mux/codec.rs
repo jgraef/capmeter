@@ -104,7 +104,6 @@ impl Decoder for ChunkedDecoder {
                     self.state = ChunkedDecoderState::ReadHeader;
 
                     // verify checksum
-
                     if local_checksum != checksum {
                         return Err(Error::InvalidChunkChecksum {
                             port,
@@ -129,18 +128,17 @@ impl Encoder<Chunk> for ChunkedEncoder {
     fn encode(&mut self, chunk: Chunk, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let chunk_length: u16 = chunk.data.len().try_into().expect("chunk too large");
 
-        let mut scratch = [0; HEADER_LENGTH];
-        let mut dst_crc = CrcBuf::new(&mut scratch[..]);
-
+        let mut dst_crc = CrcBuf::new(dst);
         dst_crc.put_u16(chunk.port);
         dst_crc.put_u16(chunk_length);
         dst_crc.put_u16(0); // placeholder for crc
         dst_crc.put(chunk.data);
 
+        // fill in checksum
         let checksum = dst_crc.digest.finalize();
+        (&mut dst_crc.inner[4..6]).put_u16(checksum);
 
-        dst.put_slice(&scratch);
-        (&mut dst[4..6]).put_u16(checksum);
+        tracing::debug!(data = ?&dst_crc.inner[..], "encoded chunk");
 
         Ok(())
     }
@@ -214,6 +212,8 @@ where
         let chunk = self.inner.chunk_mut();
 
         let data = unsafe {
+            // SAFETY
+            //
             // From the contract of BufMut:
             //
             // The caller must ensure that the next cnt bytes of chunk are
@@ -222,6 +222,13 @@ where
         };
 
         self.digest.update(data);
+
+        unsafe {
+            // SAFETY
+            //
+            // Just delegates
+            self.inner.advance_mut(cnt);
+        }
     }
 
     fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {

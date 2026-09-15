@@ -1,5 +1,4 @@
 use core::{
-    cell::Cell,
     convert::Infallible,
     ops::{
         Deref,
@@ -8,7 +7,7 @@ use core::{
     task::Poll,
 };
 
-use avr_device::interrupt::Mutex;
+use arduino_hal::prelude::_unwrap_infallible_UnwrapInfallible;
 use embedded_io::{
     ErrorType,
     Read,
@@ -32,46 +31,25 @@ use serde::{
 };
 use ufmt::uWrite;
 
-use crate::serial::Serial;
+use crate::{
+    eprintln,
+    global::Global,
+    serial::Serial,
+};
 
 const BUFFER_SIZE: usize = DEFAULT_MTU + HEADER_LENGTH;
 
-static GLOBAL_MUX: Mutex<Cell<GlobalMux>> = Mutex::new(Cell::new(GlobalMux::Uninitialized));
-
-enum GlobalMux {
-    Uninitialized,
-    Acquired,
-    Released(Mux),
-}
+static GLOBAL_MUX: Global<Mux> = Global::new();
 
 pub fn install(mux: Mux) {
-    avr_device::interrupt::free(move |cs| {
-        let global_mux = GLOBAL_MUX.borrow(cs);
-        global_mux.set(GlobalMux::Released(mux));
-    });
+    GLOBAL_MUX.install(mux);
 }
 
 pub fn with<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Mux) -> R,
 {
-    let mut mux = avr_device::interrupt::free(move |cs| {
-        let global_mux = GLOBAL_MUX.borrow(cs);
-        match global_mux.replace(GlobalMux::Acquired) {
-            GlobalMux::Released(mux) => mux,
-            GlobalMux::Uninitialized => panic!("Global Mux not initialized"),
-            GlobalMux::Acquired => panic!("Global Mux already acquired"),
-        }
-    });
-
-    let output = f(&mut mux);
-
-    avr_device::interrupt::free(move |cs| {
-        let global_mux = GLOBAL_MUX.borrow(cs);
-        global_mux.replace(GlobalMux::Released(mux));
-    });
-
-    output
+    GLOBAL_MUX.with(f)
 }
 
 pub struct Mux {
@@ -89,7 +67,7 @@ impl Mux {
 
     pub fn poll_receive(&mut self) -> Poll<Option<Chunk<'_>>> {
         // check if there is any data to be read
-        if !self.serial.read_ready().unwrap() {
+        if !self.serial.read_ready().unwrap_infallible() {
             return Poll::Pending;
         }
 
@@ -98,7 +76,7 @@ impl Mux {
         // read header
         self.buffer.resize_default(HEADER_LENGTH).unwrap();
         if let Err(ReadExactError::UnexpectedEof) = self.serial.read_exact(&mut self.buffer) {
-            // log eof?
+            // EOF. Serial connection closed? Exit.
             return Poll::Ready(None);
         }
 
@@ -107,27 +85,46 @@ impl Mux {
         let checksum = u16::from_be_bytes(self.buffer[4..6].try_into().unwrap());
 
         // clear out remote checksum for local checksum calculation
-        self.buffer[2..4].fill(0);
+        self.buffer[4..6].fill(0);
         // add header to local checksum
         digest.update(&self.buffer);
 
-        // read data
-        if let Err(_error) = self.buffer.resize_default(chunk_length.into()) {
-            // todo: log error
+        eprintln!(
+            self,
+            "port={}, chunk_length={}, checksum={:02x}", port, chunk_length, checksum
+        );
+
+        // resize buffer for data
+        let chunk_length: usize = chunk_length.into();
+        if let Err(_error) = self.buffer.resize_default(chunk_length) {
+            eprintln!(self, "Received chunk that is too large: {}", chunk_length);
+
+            // Chunk is too large for us. Skip it
+            self.serial.skip(chunk_length);
+
             return Poll::Pending;
         }
 
+        // receive data
         if let Err(ReadExactError::UnexpectedEof) = self.serial.read_exact(&mut self.buffer) {
-            // todo: log unexpected eof
-            return Poll::Pending;
+            // EOF. There would be no way to recover the stream, so exit.
+            return Poll::Ready(None);
         }
 
         digest.update(&self.buffer);
 
         // verify checksum
         let local_checksum = digest.finalize();
+
         if local_checksum != checksum {
-            // todo: log error
+            // invalid checksum. ignore chunk.
+            eprintln!(
+                self,
+                "Chunk with invalid checksum: local={:02x}, remote={:02x}",
+                local_checksum,
+                checksum
+            );
+
             return Poll::Pending;
         }
 
