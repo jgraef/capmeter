@@ -11,25 +11,20 @@ pub mod serial;
 
 use core::task::Poll;
 
+use ::protocol::checksum::CRC;
 use arduino_hal::{
     pins,
-    port::{
-        mode::{
-            Analog,
-            Floating,
-            Input,
-            Output,
-        },
-        Pin,
-    },
     Peripherals,
+};
+use crc::{
+    Crc,
+    CRC_16_USB,
 };
 use protocol::{
     ClientMessage,
     DeviceHello,
     DeviceMessage,
     Version,
-    PROTOCOL_PORT,
 };
 
 use crate::{
@@ -67,14 +62,24 @@ fn main() -> ! {
     }));
 
     // send hello via debug print
-    println!("Capacitor Meter v0.0.1");
+    println!("Capacitor Meter v0.0.1",);
 
-    let mut adc = arduino_hal::Adc::new(peripherals.ADC, Default::default());
+    {
+        println!("crc table size: {}", &core::mem::size_of_val(&CRC));
+        let mut digest = CRC.digest();
+
+        digest.update(b"\x00\x01\x00\x05\x00\x00\x00\x01\x00\x01\x00");
+
+        let checksum = digest.finalize();
+        println!("checksum = {} (dec), {:04x} (hex)", checksum, checksum);
+    }
+
+    /*let mut adc = arduino_hal::Adc::new(peripherals.ADC, Default::default());
     let mut meter = Meter {
         pin_read: pins.a0.into_analog_input(&mut adc),
         pin_charge: pins.d12.into_output(),
         pin_discharge: pins.d11.into_floating_input(),
-    };
+    };*/
 
     loop {
         match protocol::receive() {
@@ -106,8 +111,8 @@ fn main() -> ! {
     })
 }
 
-struct Meter<READ, CHARGE, DISCHARGE> {
+/*struct Meter<READ, CHARGE, DISCHARGE> {
     pin_read: Pin<Analog, READ>,
     pin_charge: Pin<Output, CHARGE>,
     pin_discharge: Pin<Input<Floating>, DISCHARGE>,
-}
+}*/

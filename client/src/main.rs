@@ -8,7 +8,6 @@ use std::{
 use anyhow::{
     Error,
     anyhow,
-    bail,
 };
 use clap::{
     Parser,
@@ -27,6 +26,7 @@ use protocol::{
     DeviceMessage,
     PROTOCOL_PORT,
     Version,
+    checksum::CRC,
 };
 use tokio::io::AsyncBufReadExt;
 use tracing::Instrument;
@@ -44,6 +44,23 @@ async fn main() -> Result<(), Error> {
     let _ = dotenvy::dotenv();
     tracing_subscriber::fmt::init();
 
+    //main_app().await?;
+    main_test();
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn main_test() {
+    let mut digest = CRC.digest();
+
+    digest.update(b"\x00\x01\x00\x05\x00\x00\x00\x01\x00\x01\x00");
+
+    let checksum = digest.finalize();
+    println!("{checksum}, {checksum:04x}");
+}
+
+async fn main_app() -> Result<(), Error> {
     let args = Args::parse();
 
     let mut client = Mux::open(&args.device, args.baud_rate)?;
@@ -75,7 +92,7 @@ async fn main() -> Result<(), Error> {
         .await?;
 
     let device_hello = handshake(&mut sender, &mut receiver)
-        .await
+        .await?
         .ok_or_else(|| anyhow!("Device didn't greet us"))?;
     tracing::debug!(version = ?device_hello.version, "Device version");
 
@@ -100,7 +117,7 @@ async fn main() -> Result<(), Error> {
 async fn handshake(
     sender: &mut Sender<ClientMessage>,
     receiver: &mut Receiver<DeviceMessage>,
-) -> Option<DeviceHello> {
+) -> Result<Option<DeviceHello>, Error> {
     // the device will send a bootup hello at startup and a hello whenever it
     // receives a hello from us.
     //
@@ -130,12 +147,12 @@ async fn handshake(
 
     while error_count < 5 {
         // send client hello
-        sender.send(&ClientMessage::Hello(client_hello)).await;
+        sender.send(&ClientMessage::Hello(client_hello)).await?;
 
         match receiver.next().await {
             None => {
                 // end of stream, but nothing received :'(
-                return None;
+                return Ok(None);
             }
             Some(Err(error)) => {
                 tracing::error!(?error, ?error_count, "Error while waiting for hello");
@@ -143,7 +160,7 @@ async fn handshake(
                 // just continue waiting
             }
             Some(Ok(DeviceMessage::Hello(device_hello))) => {
-                return Some(device_hello);
+                return Ok(Some(device_hello));
             }
             // todo: remove this lint exception. we didn't have any other message at the time
             #[allow(unreachable_patterns)]
@@ -152,14 +169,14 @@ async fn handshake(
                 // message");
 
                 // ignore this and continue waiting
-                return None;
+                return Ok(None);
             }
         }
 
-        tokio::time::sleep(Duration::from_millis(200));
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 
-    None
+    Ok(None)
 }
 
 #[derive(Debug, Parser)]

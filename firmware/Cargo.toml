@@ -1,12 +1,12 @@
 [package]
-name = "hello-arduino"
+name = "firmware"
 version = "0.1.0"
 authors = ["Janosch Gräf <janosch.graef@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "hello-arduino"
+name = "firmware"
 test = false
 bench = false
 

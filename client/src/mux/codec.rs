@@ -105,6 +105,7 @@ impl Decoder for ChunkedDecoder {
 
                     // verify checksum
                     if local_checksum != checksum {
+                        tracing::error!(?port, ?chunk_length, remote_checksum = ?checksum, ?local_checksum, ?data, "Invalid checksum");
                         return Err(Error::InvalidChunkChecksum {
                             port,
                             local_checksum,
