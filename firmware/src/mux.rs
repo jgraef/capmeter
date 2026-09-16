@@ -58,6 +58,7 @@ pub struct Mux {
 }
 
 impl Mux {
+    #[inline(always)]
     pub fn new(serial: Serial) -> Self {
         Self {
             serial,
@@ -155,6 +156,7 @@ impl Mux {
         send.finish();
     }
 
+    #[inline(always)]
     pub fn writer(&mut self, port: Port) -> Writer<'_> {
         Writer {
             send: self.send_chunk(port),
@@ -168,6 +170,7 @@ pub struct Chunk<'a> {
 }
 
 impl<'a> Chunk<'a> {
+    #[inline(always)]
     pub fn deserialize<T>(&self) -> Result<T, postcard::Error>
     where
         T: DeserializeOwned,
@@ -182,22 +185,27 @@ pub struct SendChunk<'a> {
 }
 
 impl<'a> SendChunk<'a> {
+    #[inline(always)]
     pub fn put_slice(&mut self, slice: &[u8]) {
         self.buffer.extend_from_slice(slice).unwrap();
     }
 
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.buffer.len() - HEADER_LENGTH
     }
 
+    #[inline(always)]
     pub fn clear(&mut self) {
         self.buffer.resize_default(HEADER_LENGTH).unwrap();
     }
 
+    #[inline(always)]
     pub fn truncate(&mut self, mut new_length: usize) {
         new_length += HEADER_LENGTH;
         if new_length < self.buffer.len() {
@@ -205,10 +213,12 @@ impl<'a> SendChunk<'a> {
         }
     }
 
+    #[inline(always)]
     pub fn remaining(&self) -> usize {
         self.buffer.capacity() - self.len()
     }
 
+    #[inline(always)]
     pub fn is_full(&self) -> bool {
         self.buffer.is_full()
     }
@@ -236,18 +246,21 @@ impl<'a> SendChunk<'a> {
         self.clear();
     }
 
+    #[inline(always)]
     pub fn finish(mut self) {
         self.flush();
     }
 }
 
 impl<'a> AsRef<[u8]> for SendChunk<'a> {
+    #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.buffer
     }
 }
 
 impl<'a> AsMut<[u8]> for SendChunk<'a> {
+    #[inline(always)]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.buffer
     }
@@ -256,24 +269,28 @@ impl<'a> AsMut<[u8]> for SendChunk<'a> {
 impl<'a> Deref for SendChunk<'a> {
     type Target = [u8];
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.buffer
     }
 }
 
 impl<'a> DerefMut for SendChunk<'a> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.buffer
     }
 }
 
 impl<'a> Extend<u8> for SendChunk<'a> {
+    #[inline(always)]
     fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
         self.buffer.extend(iter);
     }
 }
 
 impl<'a> Extend<u8> for &mut SendChunk<'a> {
+    #[inline(always)]
     fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
         self.buffer.extend(iter);
     }
@@ -300,6 +317,7 @@ impl<'a> embedded_io::Write for Writer<'a> {
         Ok(n)
     }
 
+    #[inline(always)]
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.send.flush();
         Ok(())
@@ -309,12 +327,14 @@ impl<'a> embedded_io::Write for Writer<'a> {
 impl<'a> uWrite for Writer<'a> {
     type Error = Infallible;
 
+    #[inline(always)]
     fn write_str(&mut self, s: &str) -> Result<(), Self::Error> {
         self.write_all(s.as_bytes())
     }
 }
 
 impl<'a> Drop for Writer<'a> {
+    #[inline(always)]
     fn drop(&mut self) {
         self.send.flush();
     }

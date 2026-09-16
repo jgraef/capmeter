@@ -11,14 +11,17 @@ pub type Port = u16;
 
 pub const PROTOCOL_PORT: Port = 1;
 pub const DEBUG_PORT: Port = 2;
-pub const DEFAULT_MTU: usize = 122;
-//pub const DEFAULT_MTU: usize = 250;
+pub const DEFAULT_MTU: usize = 64;
 pub const HEADER_LENGTH: usize = 6;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "ufmt", derive(ufmt::derive::uDebug))]
 pub enum DeviceMessage {
     Hello(DeviceHello),
+    Measurement {
+        /// Capacity in μF
+        capacity: Result<u32, ()>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -33,7 +36,10 @@ pub struct DeviceHello {
 pub enum ClientMessage {
     Hello(ClientHello),
     Measure {
-        // todo
+        /// Timeout in ms
+        timeout: u32,
+        /// Resistance of charge resistor
+        charge_resistor: u32,
     },
 }
 

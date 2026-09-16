@@ -36,6 +36,7 @@ pub fn receive() -> Poll<Option<ClientMessage>> {
     })
 }
 
+#[inline(always)]
 pub fn send(message: &DeviceMessage) {
     mux::with(|mux| {
         mux.send_message(PROTOCOL_PORT, message);

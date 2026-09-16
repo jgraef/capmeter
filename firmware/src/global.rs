@@ -9,12 +9,14 @@ pub struct Global<T> {
 }
 
 impl<T> Global<T> {
+    #[inline(always)]
     pub const fn new() -> Self {
         Self {
             inner: Mutex::new(Cell::new(State::Uninitialized)),
         }
     }
 
+    #[inline(always)]
     pub fn install(&self, init: T) {
         avr_device::interrupt::free(move |cs| {
             let state = self.inner.borrow(cs);

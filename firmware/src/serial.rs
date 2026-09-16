@@ -117,6 +117,7 @@ impl Read for Serial {
 }
 
 impl ReadReady for Serial {
+    #[inline(always)]
     fn read_ready(&mut self) -> Result<bool, Self::Error> {
         Ok(self.peek().is_some())
     }
@@ -131,6 +132,7 @@ impl Write for Serial {
         Ok(buf.len())
     }
 
+    #[inline(always)]
     fn flush(&mut self) -> Result<(), Self::Error> {
         // nop
         Ok(())

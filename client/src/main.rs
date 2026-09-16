@@ -44,8 +44,8 @@ async fn main() -> Result<(), Error> {
     let _ = dotenvy::dotenv();
     tracing_subscriber::fmt::init();
 
-    //main_app().await?;
-    main_test();
+    main_app().await?;
+    //main_test();
 
     Ok(())
 }
@@ -97,14 +97,32 @@ async fn main_app() -> Result<(), Error> {
     tracing::debug!(version = ?device_hello.version, "Device version");
 
     match args.command {
-        Command::Measure {} => {
-            sender.send(&ClientMessage::Measure {}).await?;
+        Command::Measure {
+            timeout,
+            charge_resistor,
+        } => {
+            sender
+                .send(&ClientMessage::Measure {
+                    timeout,
+                    charge_resistor,
+                })
+                .await?;
 
             while let Some(message) = receiver.try_next().await? {
                 match message {
                     DeviceMessage::Hello(_device_hello) => {
                         // ignore, since we're only interested in these at
                         // startup
+                    }
+                    DeviceMessage::Measurement { capacity } => {
+                        match capacity {
+                            Ok(capacity) => {
+                                println!("Capacity: {capacity} μF");
+                            }
+                            Err(()) => {
+                                eprintln!("Measurement unsuccessful");
+                            }
+                        }
                     }
                 }
             }
@@ -194,6 +212,12 @@ struct Args {
 #[derive(Debug, Subcommand)]
 enum Command {
     Measure {
-        // todo
+        /// Timeout for measurement in ms.
+        #[clap(short, long, default_value = "10000")]
+        timeout: u32,
+
+        /// Resistance of charge resistor in Ω
+        #[clap(short, long, default_value = "1000")]
+        charge_resistor: u32,
     },
 }

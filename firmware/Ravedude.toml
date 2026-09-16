@@ -4,5 +4,5 @@
 [general]
 board = "uno"
 serial-baudrate = 57600
-open-console = true
+#open-console = true
 output-mode = "hex"
