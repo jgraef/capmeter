@@ -1,0 +1,15 @@
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 001 Device 002: ID 0c45:6723 Microdia Integrated_Webcam_HD
+Bus 001 Device 003: ID 2109:2820 VIA Labs, Inc. VL820 Hub
+Bus 001 Device 004: ID 0489:e0a2 Foxconn / Hon Hai 
+Bus 001 Device 005: ID 05e3:0610 Genesys Logic, Inc. Hub
+Bus 001 Device 006: ID 06c4:c412 Bizlink International Corp. DELL DA300
+Bus 001 Device 061: ID 1c4f:0084 SiGma Micro USB Keyboard
+Bus 001 Device 072: ID 0483:3748 STMicroelectronics ST-LINK/V2
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 004 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 004 Device 002: ID 05e3:0626 Genesys Logic, Inc. Hub
+Bus 004 Device 003: ID 2109:0820 VIA Labs, Inc. VL820 Hub
+Bus 004 Device 004: ID 0b95:1790 ASIX Electronics Corp. AX88179 Gigabit Ethernet
+Bus 004 Device 005: ID 0bda:8153 Realtek Semiconductor Corp. RTL8153 Gigabit Ethernet Adapter
