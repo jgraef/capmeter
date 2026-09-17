@@ -78,30 +78,24 @@ async fn main(spawner: Spawner) {
     let (sender, receiver) = channel::new();
 
     // usb
-    spawner.spawn(
-        usb::run(
-            usb::Peripherals {
-                USB_OTG_FS: peripherals.USB_OTG_FS,
-                PA12: peripherals.PA12,
-                PA11: peripherals.PA11,
-            },
-            sender,
-        )
-        .unwrap(),
-    );
+    spawner.spawn(defmt::unwrap!(usb::run(
+        usb::Peripherals {
+            USB_OTG_FS: peripherals.USB_OTG_FS,
+            PA12: peripherals.PA12,
+            PA11: peripherals.PA11,
+        },
+        sender,
+    )));
 
     // measurement
-    spawner.spawn(
-        measure::run(
-            measure::Peripherals {
-                ADC1: peripherals.ADC1,
-                PA0: peripherals.PA0,
-                PA1: peripherals.PA1,
-            },
-            receiver,
-        )
-        .unwrap(),
-    );
+    spawner.spawn(defmt::unwrap!(measure::run(
+        measure::Peripherals {
+            TIM2: peripherals.TIM2,
+            PA0: peripherals.PA0,
+            PA1: peripherals.PA1,
+        },
+        receiver,
+    )));
 
     // blinky
     let mut led = Output::new(peripherals.PC13, Level::High, Speed::Low);

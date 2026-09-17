@@ -1,10 +1,15 @@
-use std::time::Duration;
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
 
+use futures_util::Stream;
 use nusb::{
     DeviceSelector,
     transfer::{ControlIn, ControlOut, ControlType, Recipient},
 };
-use protocol::{MeasureError, MeasureOutcome, Request};
+use protocol::{Command, Measurement};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -20,21 +25,16 @@ pub enum Error {
     #[error(transparent)]
     Postcard(#[from] postcard::Error),
 
-    #[error("Measurement error")]
-    MeasureError(MeasureError),
-}
-
-impl From<MeasureError> for Error {
-    fn from(value: MeasureError) -> Self {
-        Self::MeasureError(value)
-    }
+    #[error("Device hasn't taken a measurement yet")]
+    NoMeasurement,
 }
 
 #[derive(Debug)]
 pub struct Client {
     usb_interface: nusb::Interface,
     usb_timeout: Duration,
-    poll_interval: Duration,
+    retry_interval: Duration,
+    num_retries: usize,
 }
 
 impl Client {
@@ -58,39 +58,17 @@ impl Client {
         Ok(Self {
             usb_interface: interface,
             usb_timeout: Duration::from_millis(100),
-            poll_interval: Duration::from_millis(250),
+            retry_interval: Duration::from_millis(250),
+            num_retries: 10,
         })
     }
 
-    pub async fn measure(
-        &mut self,
-        charge_resistor: u32,
-        timeout: Duration,
-    ) -> Result<MeasureOutcome, Error> {
-        let request = protocol::MeasureRequest {
-            timeout: timeout.as_millis().try_into().unwrap_or(u32::MAX),
-            charge_resistor,
-        };
-        let data = postcard::to_allocvec(&request)?;
+    pub async fn read_measure(&mut self) -> Result<Measurement, Error> {
+        // note: the usb device can respond with None if it hasn't taken a measurement yet. in this case we should just try again.
+        let mut interval = tokio::time::interval(self.retry_interval);
 
-        // start measurement
-        self.usb_interface
-            .control_out(
-                ControlOut {
-                    control_type: ControlType::Vendor,
-                    recipient: Recipient::Interface,
-                    request: protocol::MeasureRequest::REQUEST,
-                    value: 0,
-                    index: 0,
-                    data: &data,
-                },
-                self.usb_timeout,
-            )
-            .await?;
-
-        // poll for result
-        let mut interval = tokio::time::interval(self.poll_interval);
-        loop {
+        for _ in 0..self.num_retries {
+            // note: first call doesn't wait
             interval.tick().await;
 
             let data = self
@@ -99,21 +77,65 @@ impl Client {
                     ControlIn {
                         control_type: ControlType::Vendor,
                         recipient: Recipient::Interface,
-                        request: protocol::MeasureRequest::REQUEST,
+                        request: 0,
                         value: 0,
                         index: 0,
-                        length: 1024, // todo: make an option or constant
+                        length: 256,
                     },
                     self.usb_timeout,
                 )
                 .await?;
 
-            let response: Option<Result<MeasureOutcome, MeasureError>> =
-                postcard::from_bytes(&data)?;
-
-            if let Some(result) = response {
-                return result.map_err(Into::into);
+            if let Some(measurement) = postcard::from_bytes::<Option<Measurement>>(&data)? {
+                return Ok(measurement);
             }
         }
+
+        Err(Error::NoMeasurement)
+    }
+
+    pub fn stream_measurements(&mut self) -> Measurements<'_> {
+        Measurements {
+            client: self,
+            previous_serial: None,
+        }
+    }
+
+    async fn send_command(&mut self, command: &Command) -> Result<(), Error> {
+        let data = postcard::to_allocvec(command)?;
+
+        self.usb_interface
+            .control_out(
+                ControlOut {
+                    control_type: ControlType::Vendor,
+                    recipient: Recipient::Interface,
+                    request: 0,
+                    value: 0,
+                    index: 0,
+                    data: &data,
+                },
+                self.usb_timeout,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn set_discharge(&mut self, enable: bool) -> Result<(), Error> {
+        self.send_command(&Command::SetDischarge(enable)).await
+    }
+}
+
+#[derive(Debug)]
+pub struct Measurements<'a> {
+    client: &'a mut Client,
+    previous_serial: Option<u32>,
+}
+
+impl<'a> Stream for Measurements<'a> {
+    type Item = Measurement;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        todo!()
     }
 }

@@ -27,10 +27,7 @@ use embassy_usb::{
     },
     types::InterfaceNumber,
 };
-use protocol::{
-    MeasureRequest,
-    Request as _,
-};
+use protocol::Command;
 
 use crate::channel;
 
@@ -65,7 +62,7 @@ bind_interrupts!(struct Irqs {
 });
 
 #[embassy_executor::task]
-pub async fn run(peripherals: Peripherals, sender: channel::Sender) {
+pub async fn run(peripherals: Peripherals, channel: channel::UsbSide) {
     let mut ep_out_buffer = [0u8; 256];
     let mut config = embassy_stm32::usb::Config::default();
     config.vbus_detection = false;
@@ -94,7 +91,7 @@ pub async fn run(peripherals: Peripherals, sender: channel::Sender) {
     // needs to be created before the builder
     let mut handler = ControlHandler {
         interface: InterfaceNumber(0),
-        sender,
+        channel,
     };
 
     let mut builder = Builder::new(
@@ -130,14 +127,15 @@ pub async fn run(peripherals: Peripherals, sender: channel::Sender) {
 
 struct ControlHandler {
     interface: InterfaceNumber,
-    sender: channel::Sender,
+    channel: channel::UsbSide,
 }
 
 impl ControlHandler {
     fn filter_request(&self, request: &Request) -> bool {
         let accept = request.request_type == RequestType::Vendor
             && request.recipient == Recipient::Interface
-            && request.index == self.interface.0 as u16;
+            && request.index == self.interface.0 as u16
+            && request.request == 0;
 
         if accept {
             defmt::trace!("accepted control request: {:?}", request);
@@ -201,24 +199,15 @@ impl Handler for ControlHandler {
     ) -> Option<InResponse<'a>> {
         if self.filter_request(&request) {
             match request.request {
-                protocol::MeasureRequest::REQUEST => {
-                    // note: this will work for now while we only have one
-                    // request/response pair. this doesn't really work for
-                    // multiple responses and we want this control to be able to
-                    // get any response of these. then we probably need a Signal
-                    // per response type.
+                0 => {
+                    let measurement = self.channel.read_measurement();
 
-                    let response = match self.sender.receive_response() {
-                        Some(channel::Response::Measure(result)) => Some(result),
-                        _ => None,
-                    };
-
-                    match postcard::to_slice(&response, buffer) {
+                    match postcard::to_slice(&measurement, buffer) {
                         Ok(data) => Some(InResponse::Accepted(data)),
                         Err(error) => {
                             defmt::error!(
                                 "Failed to serialize response: {:?}: {}",
-                                response,
+                                measurement,
                                 error
                             );
                             Some(InResponse::Rejected)
@@ -236,17 +225,15 @@ impl Handler for ControlHandler {
     fn control_out(&mut self, request: Request, data: &[u8]) -> Option<OutResponse> {
         if self.filter_request(&request) {
             match request.request {
-                protocol::MeasureRequest::REQUEST => {
-                    match postcard::from_bytes::<MeasureRequest>(data) {
-                        Ok(request) => {
-                            defmt::debug!("Measurement request: {:?}", request);
+                0 => {
+                    match postcard::from_bytes::<Command>(data) {
+                        Ok(command) => {
+                            defmt::debug!("Control command: {:?}", command);
 
-                            match self.sender.send_request(channel::Request::Measure(request)) {
+                            match self.channel.send_command(command) {
                                 Ok(()) => Some(OutResponse::Accepted),
-                                Err(_) => {
-                                    defmt::warn!(
-                                        "Measurement already in progress. Ignorring request."
-                                    );
+                                Err(_error) => {
+                                    defmt::error!("channel full");
                                     Some(OutResponse::Rejected)
                                 }
                             }
