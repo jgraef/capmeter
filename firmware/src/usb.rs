@@ -63,6 +63,8 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 pub async fn run(peripherals: Peripherals, channel: channel::UsbSide) {
+    defmt::info!("Initializing USB");
+
     let mut ep_out_buffer = [0u8; 256];
     let mut config = embassy_stm32::usb::Config::default();
     config.vbus_detection = false;

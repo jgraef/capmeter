@@ -1,14 +1,12 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::time::Duration;
 
-use futures_util::Stream;
+use async_stream::try_stream;
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use nusb::{
     DeviceSelector,
     transfer::{ControlIn, ControlOut, ControlType, Recipient},
 };
+pub use protocol::Prescaler;
 use protocol::{Command, Measurement};
 
 #[derive(Debug, thiserror::Error)]
@@ -57,7 +55,7 @@ impl Client {
 
         Ok(Self {
             usb_interface: interface,
-            usb_timeout: Duration::from_millis(100),
+            usb_timeout: Duration::from_millis(500),
             retry_interval: Duration::from_millis(250),
             num_retries: 10,
         })
@@ -94,10 +92,49 @@ impl Client {
         Err(Error::NoMeasurement)
     }
 
-    pub fn stream_measurements(&mut self) -> Measurements<'_> {
-        Measurements {
-            client: self,
-            previous_serial: None,
+    pub fn stream_measurements(
+        &mut self,
+        interval: Option<Duration>,
+    ) -> impl Stream<Item = Result<Measurement, Error>> {
+        try_stream! {
+            let mut previous_serial = None;
+            let mut interval = interval.map(tokio::time::interval);
+
+            loop {
+                if let Some(interval) = &mut interval {
+                    interval.tick().await;
+                }
+
+                let measurement = self.read_measure().await?;
+
+                let serial = measurement.serial;
+                if previous_serial.is_none_or(|previous_serial| previous_serial != serial) {
+                    yield measurement;
+                }
+
+                previous_serial = Some(serial);
+            }
+        }
+    }
+
+    /// Returns average period in s.
+    pub async fn read_average(
+        &mut self,
+        count: usize,
+        interval: Option<Duration>,
+    ) -> Result<f64, Error> {
+        let (sum, n) = self
+            .stream_measurements(interval)
+            .take(count)
+            .map_ok(|measurement| measurement.period)
+            .try_fold((0, 0), async |(sum, n), period| Ok((sum + period, n + 1)))
+            .await?;
+
+        if n == count {
+            Ok(sum as f64 / n as f64 * 1e-6)
+        } else {
+            tracing::error!("We tried reading {count} measurements, but only got {n}");
+            Err(Error::NoMeasurement)
         }
     }
 
@@ -124,18 +161,8 @@ impl Client {
     pub async fn set_discharge(&mut self, enable: bool) -> Result<(), Error> {
         self.send_command(&Command::SetDischarge(enable)).await
     }
-}
 
-#[derive(Debug)]
-pub struct Measurements<'a> {
-    client: &'a mut Client,
-    previous_serial: Option<u32>,
-}
-
-impl<'a> Stream for Measurements<'a> {
-    type Item = Measurement;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        todo!()
+    pub async fn set_prescaler(&mut self, prescaler: Prescaler) -> Result<(), Error> {
+        self.send_command(&Command::SetPrescaler(prescaler)).await
     }
 }

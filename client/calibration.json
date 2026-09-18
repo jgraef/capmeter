@@ -1,0 +1,39 @@
+{
+    "measurements": [
+        {
+            "capacitor": 1E-9,
+            "period": 73.33e-6,
+            "prescaler": "Div1"
+        },
+        {
+            "capacitor": 4.700000000000001E-9,
+            "period": 335.39e-6,
+            "prescaler": "Div1"
+        },
+        {
+            "capacitor": 6.8000000000000005E-9,
+            "period": 441.82e-6,
+            "prescaler": "Div1"
+        },
+        {
+            "capacitor": 2.2000000000000002E-8,
+            "period": 1379.68e-6,
+            "prescaler": "Div1"
+        },
+        {
+            "capacitor": 4.7000000000000004E-8,
+            "period": 2653.14e-6,
+            "prescaler": "Div1"
+        },
+        {
+            "capacitor": 1.0000000000000001E-7,
+            "period": 5882.32e-6,
+            "prescaler": "Div1"
+        }
+    ],
+    "model": {
+        "a": 58068945558.6565e-6,
+        "b": 37.694396850640715e-6
+    },
+    "partial": false
+}

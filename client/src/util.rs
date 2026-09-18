@@ -1,6 +1,137 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use anyhow::Error;
+use futures_util::Stream;
+use pin_project_lite::pin_project;
+
+pub trait IteratorExt {
+    fn maybe_limit(self, limit: Option<usize>) -> MaybeLimit<Self>
+    where
+        Self: Sized;
+}
+
+impl<I> IteratorExt for I
+where
+    I: Iterator,
+{
+    fn maybe_limit(self, limit: Option<usize>) -> MaybeLimit<Self>
+    where
+        Self: Sized,
+    {
+        MaybeLimit { inner: self, limit }
+    }
+}
+
+pub trait StreamExt {
+    fn maybe_limit(self, limit: Option<usize>) -> MaybeLimit<Self>
+    where
+        Self: Sized;
+}
+
+impl<I> StreamExt for I
+where
+    I: Stream,
+{
+    fn maybe_limit(self, limit: Option<usize>) -> MaybeLimit<Self>
+    where
+        Self: Sized,
+    {
+        MaybeLimit { inner: self, limit }
+    }
+}
+
+pin_project! {
+    #[derive(Clone, Debug)]
+    pub struct MaybeLimit<I> {
+        #[pin]
+        inner: I,
+        limit: Option<usize>,
+    }
+}
+
+impl<I> Iterator for MaybeLimit<I>
+where
+    I: Iterator,
+{
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(limit) = &mut self.limit {
+            if *limit == 0 {
+                return None;
+            }
+
+            *limit -= 1;
+        }
+
+        self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (mut lower, mut upper) = self.inner.size_hint();
+
+        if let Some(limit) = self.limit {
+            lower = lower.min(limit);
+
+            if let Some(upper) = &mut upper {
+                *upper = (*upper).min(limit);
+            } else {
+                upper = Some(limit);
+            }
+        }
+
+        (lower, upper)
+    }
+}
+
+impl<I> ExactSizeIterator for MaybeLimit<I> where I: ExactSizeIterator {}
+
+impl<I> Stream for MaybeLimit<I>
+where
+    I: Stream,
+{
+    type Item = I::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = self.project();
+
+        if let Some(limit) = &mut this.limit {
+            if *limit == 0 {
+                return Poll::Ready(None);
+            }
+
+            let poll = this.inner.poll_next(cx);
+
+            if poll.is_ready() {
+                *limit -= 1;
+            }
+
+            poll
+        } else {
+            this.inner.poll_next(cx)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (mut lower, mut upper) = self.inner.size_hint();
+
+        if let Some(limit) = self.limit {
+            lower = lower.min(limit);
+
+            if let Some(upper) = &mut upper {
+                *upper = (*upper).min(limit);
+            } else {
+                upper = Some(limit);
+            }
+        }
+
+        (lower, upper)
+    }
+}
 
 pub const SI_PREFIXES: &[(i32, &'static str)] = &[
     (-15, "f"),

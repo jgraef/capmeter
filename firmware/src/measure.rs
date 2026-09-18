@@ -28,7 +28,10 @@ use embassy_time::{
     Duration,
     Instant,
 };
-use protocol::Measurement;
+use protocol::{
+    Measurement,
+    Prescaler,
+};
 
 use crate::channel;
 
@@ -47,6 +50,8 @@ bind_interrupts!(
 
 #[embassy_executor::task]
 pub async fn run(peripherals: Peripherals, channel: channel::MeasurementSide) {
+    defmt::info!("Initializing measurement");
+
     let mut discharge_switch = Output::new(peripherals.PA1, Level::Low, Speed::Low);
 
     // run timer at 1 MHz
@@ -71,6 +76,7 @@ pub async fn run(peripherals: Peripherals, channel: channel::MeasurementSide) {
     let mut previous_tick = None;
     let mut previous_log = None;
     let mut serial = 0;
+    let mut prescaler = Prescaler::default();
     let log_interval = Duration::from_secs(2);
 
     loop {
@@ -101,7 +107,12 @@ pub async fn run(peripherals: Peripherals, channel: channel::MeasurementSide) {
                         previous_log = Some(now);
                     }
 
-                    channel.send_measurement(Measurement { serial, period });
+                    channel.send_measurement(Measurement {
+                        serial,
+                        prescaler,
+                        discharge: discharge_switch.is_set_high(),
+                        period,
+                    });
                     serial = serial.wrapping_add(1);
                 }
 
@@ -111,6 +122,12 @@ pub async fn run(peripherals: Peripherals, channel: channel::MeasurementSide) {
                 match command {
                     protocol::Command::SetDischarge(enable) => {
                         discharge_switch.set_level(enable.into());
+                    }
+                    protocol::Command::SetPrescaler(value) => {
+                        if value != prescaler {
+                            input_capture.set_input_capture_prescaler(Channel::Ch1, value.ic1psc());
+                            prescaler = value;
+                        }
                     }
                 }
             }
