@@ -8,7 +8,7 @@ Then we built an oscillator circuit with a inverting Schmitt trigger (HEF40106BP
 
 The firmware uses input capture to measure the period of the signal on PA0. The discharge transistor and input capture prescaler can be controlled via USB. Also measurements can be read back over USB. Note, that this uses a test PID from [pid.codes](https://pid.codes/1209/0001/), specifically `1209:0001` and thus should only be used for test purposes and not be distributed.
 
-This is the measurement circuit on a breadboard. It's not very accurate due to the parasicit impedances of the setup - although the client program uses calibration to account for some of it. The DUT is circled in pink.
+This is the measurement circuit on a breadboard. It's not very accurate due to the parasitic impedances of the setup - although the client program uses calibration to account for some of it. The DUT is circled in pink.
 
 ![Measurement circuit on a breadboard.](docs/breadboard.jpg "Measurement circuit on a breadboard.")
 
